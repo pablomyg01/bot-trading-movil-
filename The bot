@@ -1,0 +1,73 @@
+import streamlit as st
+import pandas as pd
+import requests
+import plotly.graph_objects as go
+
+# 1. CONFIGURACIÓN DE LA PÁGINA (Optimizado para Celular)
+st.set_page_config(
+    page_title="Mi Bot de Trading", 
+    page_icon="📈", 
+    layout="centered"
+)
+
+# Título principal de la aplicación
+st.title("📈 Algoritmo de Trading Pro")
+st.write("Analiza tendencias del mercado en tiempo real usando estrategias combinadas.")
+
+# 2. INTERFAZ DE USUARIO (Menú Desplegable)
+ticker = st.selectbox(
+    "Selecciona el activo que deseas analizar:",
+    ("AAPL", "TSLA", "NVDA", "MSFT", "BTC-USD", "ETH-USD")
+)
+
+# Botón interactivo para ejecutar el bot
+if st.button("🚀 Ejecutar Análisis Técnico", use_container_width=True):
+    
+    # Mensaje de carga mientras descarga datos
+    with st.spinner(f"Conectando con servidores... Analizando {ticker}"):
+        
+        # URL oficial de Yahoo para extraer datos crudos en la nube
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=60d&interval=1d"
+        headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15'}
+        
+        respuesta = requests.get(url, headers=headers)
+        
+        if respuesta.status_code == 200:
+            try:
+                datos_json = respuesta.json()
+                timestamps = datos_json['chart']['result'][0]['timestamp']
+                precios_cierre = datos_json['chart']['result'][0]['indicators']['quote'][0]['close']
+                
+                # Organizar datos en una tabla de Pandas
+                datos = pd.DataFrame({'Close': precios_cierre}, index=pd.to_datetime(timestamps, unit='s'))
+                datos = datos.dropna()
+                
+                # 3. CÁLCULOS MATEMÁTICOS DE LA ESTRATEGIA
+                # Calcular Medias Móviles Exponenciales (EMA)
+                datos['EMA_9'] = datos['Close'].ewm(span=9, adjust=False).mean()
+                datos['EMA_21'] = datos['Close'].ewm(span=21, adjust=False).mean()
+                
+                # Calcular Índice de Fuerza Relativa (RSI de 14 períodos)
+                delta = datos['Close'].diff()
+                ganancia = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                perdida = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                datos['RSI'] = 100 - (100 / (1 + (ganancia / perdida)))
+                
+                # Extraer los datos del último día cerrado
+                ultima_vela = datos.iloc[-1]
+                precio_actual = float(ultima_vela['Close'])
+                ema9_actual = float(ultima_vela['EMA_9'])
+                ema21_actual = float(ultima_vela['EMA_21'])
+                rsi_actual = float(ultima_vela['RSI'])
+                
+                # 4. TARJETAS VISUALES CON LOS RESULTADOS
+                st.markdown("### 📊 Datos Actuales")
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Precio Cierre", f"${precio_actual:.2f}")
+                col2.metric("EMA 9", f"${ema9_actual:.2f}")
+                col3.metric("RSI (14)", f"{rsi_actual:.1f} pts")
+                
+                # 5. LÓGICA DE ALERTA Y SEÑAL DE TRADING
+                st.markdown("### 📢 Señal del Algoritmo")
+                
+                # Condición Alcista: Med
